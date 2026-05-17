@@ -27,12 +27,15 @@ MOSS_PROJECT_KEY=
 SUPERMEMORY_API_KEY=
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
 ## API Routes
 
 - `POST /api/start-demo` with `{ "vertical": "dental" | "government" | "compliance" }`
 - `POST /api/agentphone/webhook` for AgentPhone SMS or voice transcript events
+- `POST /api/agentphone/call` with `{ "caseId": "..." }` for dental or government/city voice call demos
 - `POST /api/chat` with `{ "caseId": "...", "message": "..." }`
 - `POST /api/agentphone/inbound` with `{ "caseId": "...", "from": "+1...", "body": "..." }`
 - `POST /api/agentphone/send` with `{ "caseId": "...", "to": "+1...", "body": "..." }`
@@ -42,8 +45,9 @@ OPENAI_MODEL=gpt-4o-mini
 - `POST /api/memory/save`
 - `POST /api/memory/search`
 - `POST /api/search/moss`
+- `GET /api/settings`
+- `POST /api/settings` with `{ "aiProvider": "openai" | "gemini" }`
 - `GET /api/cases`
 - `GET /api/cases/:id`
 
-Local case state is stored in `data/cases.json`, which is ignored by git.
-# Frontline-AI-Agent
+Local case, memory, and settings state is stored in `data/*.json`, which is ignored by git.
