@@ -11,10 +11,13 @@ import type {
   SentEmail
 } from "@/lib/types";
 import { normalizeVertical } from "@/lib/types";
+import { hasUpstash, redisGet, redisSetJson } from "@/lib/upstash";
 
 const dataDir = path.join(process.cwd(), "data");
 const casesPath = path.join(dataDir, "cases.json");
 const memoryPath = path.join(dataDir, "memory.json");
+const casesKey = "frontline:cases";
+const memoryKey = "frontline:memory";
 
 async function ensureJsonFile(filePath: string, fallback: string) {
   await fs.mkdir(dataDir, { recursive: true });
@@ -80,6 +83,10 @@ function migrateCase(raw: Record<string, unknown>): CaseRecord {
 }
 
 export async function readCases(): Promise<CaseRecord[]> {
+  if (hasUpstash()) {
+    const cases = await redisGet<Record<string, unknown>[]>(casesKey, []);
+    return cases.map(migrateCase);
+  }
   await ensureStore();
   const raw = await fs.readFile(casesPath, "utf8");
   const parsed = JSON.parse(raw) as Record<string, unknown>[];
@@ -87,6 +94,10 @@ export async function readCases(): Promise<CaseRecord[]> {
 }
 
 async function writeCases(cases: CaseRecord[]) {
+  if (hasUpstash()) {
+    await redisSetJson(casesKey, cases);
+    return;
+  }
   await ensureStore();
   await fs.writeFile(casesPath, JSON.stringify(cases, null, 2), "utf8");
 }
@@ -177,9 +188,7 @@ export async function updateCase(id: string, updater: (record: CaseRecord) => Ca
 }
 
 export async function addLocalMemory(memory: Omit<MemoryResult, "id" | "createdAt" | "source"> & { userId: string }) {
-  await ensureStore();
-  const raw = await fs.readFile(memoryPath, "utf8");
-  const memories = JSON.parse(raw) as Array<MemoryResult & { userId: string }>;
+  const memories = await readMemoryRecords();
   const record = {
     id: uuid(),
     source: "local" as const,
@@ -190,14 +199,12 @@ export async function addLocalMemory(memory: Omit<MemoryResult, "id" | "createdA
     createdAt: new Date().toISOString()
   };
   memories.unshift(record);
-  await fs.writeFile(memoryPath, JSON.stringify(memories, null, 2), "utf8");
+  await writeMemoryRecords(memories);
   return record;
 }
 
 export async function searchLocalMemory(userId: string, query: string): Promise<MemoryResult[]> {
-  await ensureStore();
-  const raw = await fs.readFile(memoryPath, "utf8");
-  const memories = JSON.parse(raw) as Array<MemoryResult & { userId: string }>;
+  const memories = await readMemoryRecords();
   const terms = query.toLowerCase().split(/\W+/).filter(Boolean);
   return memories
     .filter((item) => item.userId === userId || item.metadata?.caseId === userId)
@@ -207,4 +214,20 @@ export async function searchLocalMemory(userId: string, query: string): Promise<
     }))
     .filter((item) => (item.score ?? 0) > 0 || !query.trim())
     .slice(0, 5);
+}
+
+async function readMemoryRecords() {
+  if (hasUpstash()) return redisGet<Array<MemoryResult & { userId: string }>>(memoryKey, []);
+  await ensureStore();
+  const raw = await fs.readFile(memoryPath, "utf8");
+  return JSON.parse(raw) as Array<MemoryResult & { userId: string }>;
+}
+
+async function writeMemoryRecords(memories: Array<MemoryResult & { userId: string }>) {
+  if (hasUpstash()) {
+    await redisSetJson(memoryKey, memories);
+    return;
+  }
+  await ensureStore();
+  await fs.writeFile(memoryPath, JSON.stringify(memories, null, 2), "utf8");
 }
