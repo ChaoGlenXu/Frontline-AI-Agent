@@ -1,7 +1,7 @@
 import { getCase, updateCase, audit } from "@/lib/store";
 import type { SentEmail } from "@/lib/types";
 import { v4 as uuid } from "uuid";
-import { fetchWithTimeout } from "@/lib/http";
+import { errorMessage, fetchWithTimeout } from "@/lib/http";
 
 export async function sendCaseSummaryEmail(caseId: string, recipientEmail: string): Promise<SentEmail> {
   const record = await getCase(caseId);
@@ -28,7 +28,8 @@ export async function sendCaseSummaryEmail(caseId: string, recipientEmail: strin
 
   if (process.env.AGENTMAIL_API_KEY) {
     try {
-      const response = await fetchWithTimeout("https://api.agentmail.to/v1/send", {
+      const inboxId = await getOrCreateInboxId();
+      const response = await fetchWithTimeout(`https://api.agentmail.to/v0/inboxes/${inboxId}/messages/send`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.AGENTMAIL_API_KEY}`,
@@ -37,18 +38,24 @@ export async function sendCaseSummaryEmail(caseId: string, recipientEmail: strin
         body: JSON.stringify({
           to: recipientEmail,
           subject,
-          text: body
+          text: body,
+          html: htmlEmail(record.summary, record.nextAction, record.extractedFields),
+          labels: ["frontline-ai-agent", record.vertical]
         })
       });
       const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-      if (!response.ok) throw new Error(String(data.error ?? response.statusText));
+      if (!response.ok) throw new Error(providerError(data.error, response.statusText));
       sent = {
         ...sent,
         provider: "agentmail",
-        providerMessageId: (data.id as string | undefined) ?? (data.messageId as string | undefined)
+        providerMessageId:
+          (data.message_id as string | undefined) ??
+          (data.messageId as string | undefined) ??
+          (data.id as string | undefined)
       };
-    } catch {
+    } catch (error) {
       sent.provider = "mock";
+      sent.providerMessageId = `mock:${errorMessage(error)}`;
     }
   }
 
@@ -69,6 +76,78 @@ export async function sendCaseSummaryEmail(caseId: string, recipientEmail: strin
   }));
 
   return sent;
+}
+
+async function getOrCreateInboxId() {
+  if (process.env.AGENTMAIL_INBOX_ID) return process.env.AGENTMAIL_INBOX_ID;
+  const apiKey = process.env.AGENTMAIL_API_KEY;
+  if (!apiKey) throw new Error("AGENTMAIL_API_KEY missing");
+
+  const listResponse = await fetchWithTimeout("https://api.agentmail.to/v0/inboxes?limit=10", {
+    headers: { Authorization: `Bearer ${apiKey}` }
+  });
+  const listData = (await listResponse.json().catch(() => ({}))) as {
+    inboxes?: Array<{ inbox_id?: string; email?: string }>;
+    error?: unknown;
+  };
+  if (!listResponse.ok) throw new Error(providerError(listData.error, listResponse.statusText));
+  const existing = listData.inboxes?.[0]?.inbox_id ?? listData.inboxes?.[0]?.email;
+  if (existing) return existing;
+
+  const createResponse = await fetchWithTimeout("https://api.agentmail.to/v0/inboxes", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      username: `frontline-${Date.now().toString(36)}`,
+      display_name: "Frontline AI Agent",
+      client_id: "frontline-ai-agent-demo"
+    })
+  });
+  const createData = (await createResponse.json().catch(() => ({}))) as {
+    inbox_id?: string;
+    email?: string;
+    error?: unknown;
+  };
+  if (!createResponse.ok) throw new Error(providerError(createData.error, createResponse.statusText));
+  const created = createData.inbox_id ?? createData.email;
+  if (!created) throw new Error("AgentMail did not return inbox_id");
+  return created;
+}
+
+function htmlEmail(summary: string, nextAction: string, extractedFields: Record<string, unknown>) {
+  return `
+    <div style="font-family:Inter,Arial,sans-serif;line-height:1.55;color:#0f172a">
+      <h2>Your Frontline AI Agent Summary</h2>
+      <p>${escapeHtml(summary)}</p>
+      <h3>Next step</h3>
+      <p>${escapeHtml(nextAction)}</p>
+      <h3>Structured details</h3>
+      <pre style="background:#f1f5f9;padding:12px;border-radius:10px;white-space:pre-wrap">${escapeHtml(JSON.stringify(extractedFields, null, 2))}</pre>
+    </div>
+  `;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function providerError(error: unknown, fallback: string) {
+  if (!error) return fallback;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && "message" in error && typeof error.message === "string") return error.message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return fallback;
+  }
 }
 
 function customerNextStep(nextAction: string) {

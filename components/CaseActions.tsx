@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Mail, Send } from "lucide-react";
+import { readStoredUserProfile } from "@/components/UserProfileCard";
 
 type Props = {
   caseId: string;
@@ -21,6 +23,21 @@ export function CaseActions({ caseId, email, vertical, phone }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [recipientEmail, setRecipientEmail] = useState(email ?? "");
+  const [savedEmail, setSavedEmail] = useState("");
+
+  useEffect(() => {
+    function syncProfileEmail() {
+      setSavedEmail(readStoredUserProfile().email);
+    }
+
+    syncProfileEmail();
+    window.addEventListener("frontline-profile-updated", syncProfileEmail);
+    window.addEventListener("storage", syncProfileEmail);
+    return () => {
+      window.removeEventListener("frontline-profile-updated", syncProfileEmail);
+      window.removeEventListener("storage", syncProfileEmail);
+    };
+  }, []);
 
   async function handoff(action: string) {
     setBusy(action);
@@ -33,15 +50,17 @@ export function CaseActions({ caseId, email, vertical, phone }: Props) {
     router.refresh();
   }
 
-  async function sendEmail() {
-    if (!recipientEmail.trim()) return;
-    setBusy("email");
+  async function sendEmail(targetEmail = recipientEmail, busyKey = "email") {
+    const cleanEmail = targetEmail.trim();
+    if (!cleanEmail) return;
+    setBusy(busyKey);
     await fetch("/api/send-summary-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caseId, recipientEmail })
+      body: JSON.stringify({ caseId, recipientEmail: cleanEmail })
     });
     setBusy(null);
+    setRecipientEmail(cleanEmail);
     router.refresh();
   }
 
@@ -80,13 +99,28 @@ export function CaseActions({ caseId, email, vertical, phone }: Props) {
         />
         <button
           type="button"
-          onClick={sendEmail}
+          onClick={() => sendEmail()}
           className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-100 disabled:opacity-60"
           disabled={busy === "email" || !recipientEmail.trim()}
         >
           Email
         </button>
       </div>
+      <button
+        type="button"
+        onClick={() => sendEmail(savedEmail || email || recipientEmail, "self-email")}
+        className="mt-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-purple-300/25 bg-purple-400/10 px-4 py-3 text-left text-sm font-bold text-purple-50 transition hover:border-purple-200/50 hover:bg-purple-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={busy === "self-email" || !(savedEmail || email || recipientEmail).trim()}
+      >
+        <span className="inline-flex items-center gap-2">
+          <Mail className="h-4 w-4" />
+          {busy === "self-email" ? "Sending to saved email..." : "Send summary to myself"}
+        </span>
+        <span className="inline-flex min-w-0 items-center gap-2 text-xs font-semibold text-purple-100/80">
+          <span className="truncate">{savedEmail || email || "No saved email"}</span>
+          <Send className="h-3.5 w-3.5 shrink-0" />
+        </span>
+      </button>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {actions.map((item) => (
           <button

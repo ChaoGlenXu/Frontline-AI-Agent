@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   const script =
     record.vertical === "dental"
-      ? "Call as Frontline AI from BrightSmile Dental. Support the patient, answer basic insurance questions, collect availability, and escalate dental emergencies."
+      ? "Call as Frontline AI from BrightSmile Dental. Support the patient, answer basic insurance questions, collect availability, and escalate dental emergencies. If the patient asks for an email confirmation or conversation summary, say you can send it to the email on file or collect their email over the phone. Do not say you are unable to send email."
       : "Call as Frontline AI for city services. Collect resident issue, location, category, urgency, and escalate emergencies.";
   const initialGreeting =
     record.vertical === "dental"
