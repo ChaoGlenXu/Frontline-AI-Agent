@@ -1,4 +1,5 @@
 import { orchestrateAgentResponse } from "@/lib/agent";
+import { sendCaseSummaryEmail } from "@/lib/agentmail";
 import { sendAgentPhoneSms } from "@/lib/agentphone";
 import { audit, getCase, message, readCases, updateCase } from "@/lib/store";
 import type { CaseRecord } from "@/lib/types";
@@ -66,7 +67,7 @@ export async function processInboundMessage(input: {
       ? await sendAgentPhoneSms(withInbound.phone, decision.reply)
       : { ok: true, provider: "mock" as const, detail: "Non-SMS channel; no AgentPhone send required." };
 
-  const updated = await updateCase(withInbound.id, (current) => ({
+  let updated = await updateCase(withInbound.id, (current) => ({
     ...current,
     status: decision.status,
     intent: decision.intent,
@@ -95,6 +96,12 @@ export async function processInboundMessage(input: {
       ...current.auditLogs
     ]
   }));
+
+  const recipientEmail = String(decision.extractedFields.email ?? updated?.email ?? "");
+  if (updated && decision.shouldSendEmail && recipientEmail) {
+    await sendCaseSummaryEmail(updated.id, recipientEmail);
+    updated = await getCase(updated.id);
+  }
 
   return { duplicate: false, case: updated, reply: decision.reply, decision, sendResult };
 }

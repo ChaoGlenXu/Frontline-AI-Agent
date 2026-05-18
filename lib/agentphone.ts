@@ -96,10 +96,16 @@ export async function startAgentPhoneCall(input: {
   script: string;
   caseId: string;
   vertical: "dental" | "government";
+  agentId?: string;
+  initialGreeting?: string;
 }): Promise<AgentPhoneCallResult> {
   const apiKey = process.env.AGENTPHONE_API_KEY;
   if (!apiKey) {
     return { ok: true, provider: "mock", detail: "AGENTPHONE_API_KEY missing; mocked outbound voice call." };
+  }
+  const agentId = input.agentId ?? process.env.AGENTPHONE_AGENT_ID;
+  if (!agentId) {
+    return { ok: true, provider: "mock", detail: "AGENTPHONE_AGENT_ID missing; mocked outbound voice call." };
   }
 
   try {
@@ -112,9 +118,11 @@ export async function startAgentPhoneCall(input: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          to: input.to,
-          metadata: { caseId: input.caseId, vertical: input.vertical },
-          instructions: input.script
+          agentId,
+          toNumber: input.to,
+          systemPrompt: input.script,
+          initialGreeting: input.initialGreeting ?? "Hi, this is Frontline AI. I’m calling to help with your request.",
+          metadata: { caseId: input.caseId, vertical: input.vertical }
         })
       },
       5000

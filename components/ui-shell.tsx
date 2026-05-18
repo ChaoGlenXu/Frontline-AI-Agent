@@ -32,7 +32,7 @@ const statusStyles: Record<CaseStatus, string> = {
 
 const verticalStyles: Record<Vertical, { label: string; icon: LucideIcon; accent: string; gradient: string }> = {
   dental: {
-    label: "Dental Recall",
+    label: "Dental Client Support",
     icon: CalendarCheck,
     accent: "text-cyan-200",
     gradient: "from-cyan-500/20 via-blue-500/10 to-transparent"

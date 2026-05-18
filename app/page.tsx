@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bot, Mail, MessageSquareText, Phone, Users } from "lucide-react";
 import { AIProviderToggle } from "@/components/AIProviderToggle";
+import { UserProfileCard } from "@/components/UserProfileCard";
 import { CaseCard, IntegrationBadge, PageHeader, PageShell, StatCard, WorkflowCard } from "@/components/ui-shell";
 import { sponsorStatuses } from "@/lib/status";
 import { readCases } from "@/lib/store";
@@ -57,11 +58,13 @@ export default async function DashboardPage() {
           <StatCard label="Human handoffs" value={humanHandoffs} icon={Users} tone="rose" />
         </section>
 
+        <UserProfileCard />
+
         <section className="grid gap-4 lg:grid-cols-3">
           <WorkflowCard
             vertical="dental"
             count={workflowCounts.dental}
-            description="Recall overdue patients, answer insurance questions, propose mock slots, and hand off emergencies."
+            description="Support dental clients, answer insurance questions, propose mock slots, and hand off emergencies."
           />
           <WorkflowCard
             vertical="government"

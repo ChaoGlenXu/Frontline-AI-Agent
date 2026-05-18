@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { sendCaseSummaryEmail } from "@/lib/agentmail";
 import { errorMessage, fetchWithTimeout } from "@/lib/http";
 import { searchMoss } from "@/lib/moss";
 import { getSettings } from "@/lib/settings";
@@ -32,6 +31,12 @@ export async function orchestrateAgentResponse(record: CaseRecord, inboundConten
   const decision = await decideWithProvider(settings.aiProvider, record, inboundContent, retrievalSnippets, memoryResults).catch(() =>
     fallbackDecision(record, inboundContent, retrievalSnippets, memoryResults)
   );
+  const lower = inboundContent.toLowerCase();
+  const recipientEmail = String(decision.extractedFields.email ?? record.email ?? "");
+  if (recipientEmail && hasAny(lower, ["send confirmation", "send the confirmation", "email confirmation", "send the summary", "email me", "to my email"])) {
+    decision.extractedFields.email = recipientEmail;
+    decision.shouldSendEmail = true;
+  }
 
   if (decision.shouldSaveMemory || decision.status === "booked" || decision.status === "ticket_created" || decision.status === "escalated") {
     await saveSupermemory(userId, `${record.vertical} case ${record.id}: ${decision.summary}`, {
@@ -40,10 +45,6 @@ export async function orchestrateAgentResponse(record: CaseRecord, inboundConten
       extractedFields: decision.extractedFields,
       channel
     });
-  }
-
-  if (decision.shouldSendEmail && (decision.extractedFields.email || record.email)) {
-    await sendCaseSummaryEmail(record.id, String(decision.extractedFields.email ?? record.email));
   }
 
   return { decision, retrievalSnippets, memoryResults, aiProvider: settings.aiProvider };
@@ -225,6 +226,9 @@ function fallbackDecision(
   const lower = inboundContent.toLowerCase();
   const email = inboundContent.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
   if (email) extractedFields.email = email;
+  if (!extractedFields.email && record.email && hasAny(lower, ["email", "confirmation", "confirm", "send it", "send the summary"])) {
+    extractedFields.email = record.email;
+  }
 
   if (record.vertical === "dental") {
     extractedFields.patientName ||= record.contactName;
@@ -236,7 +240,7 @@ function fallbackDecision(
       return completed(record, extractedFields, "emergency_escalation", "Dental emergency signal detected. Human escalation required.", "Escalate to emergency dental line", "escalated", "This may need urgent care. I’m escalating you to the dental team now. If symptoms are severe, call emergency services.");
     }
     extractedFields.proposedSlots ||= ["Tuesday 2:30 PM", "Thursday 10:00 AM", "Friday 3:30 PM"];
-    extractedFields.bookingConfirmed ||= hasAny(lower, ["yes", "book", "works", "confirm"]) && Boolean(extractedFields.preferredTime);
+    extractedFields.bookingConfirmed ||= hasAny(lower, ["yes", "book", "works", "confirm", "send confirmation"]) && Boolean(extractedFields.preferredTime);
   }
 
   if (record.vertical === "government") {

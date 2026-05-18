@@ -97,7 +97,7 @@ export const demoScenarios: Record<Vertical, DemoScenario> = {
     contactName: dentalPatients[0].name,
     phone: dentalPatients[0].phone,
     email: dentalPatients[0].email,
-    title: "Dental recall for overdue cleaning",
+    title: "Dental Client Support",
     seedExtractedFields: {
       patientName: dentalPatients[0].name,
       overdueMonths: dentalPatients[0].overdueMonths,
@@ -106,7 +106,7 @@ export const demoScenarios: Record<Vertical, DemoScenario> = {
       insurance: dentalPatients[0].insurance
     },
     firstMessage:
-      "Hi, this is Frontline AI from BrightSmile Dental. You're due for a cleaning. Would you like help finding a time this week?"
+      "Hi, this is Frontline AI from BrightSmile Dental. You're due for a checkup. Would you like help finding a time this week?"
   },
   government: {
     vertical: "government",

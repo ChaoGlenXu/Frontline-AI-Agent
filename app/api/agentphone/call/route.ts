@@ -23,14 +23,19 @@ export async function POST(request: Request) {
 
   const script =
     record.vertical === "dental"
-      ? "Call as Frontline AI from BrightSmile Dental. Remind the patient they are due for cleaning, answer basic insurance questions, collect availability, and escalate dental emergencies."
+      ? "Call as Frontline AI from BrightSmile Dental. Support the patient, answer basic insurance questions, collect availability, and escalate dental emergencies."
       : "Call as Frontline AI for city services. Collect resident issue, location, category, urgency, and escalate emergencies.";
+  const initialGreeting =
+    record.vertical === "dental"
+      ? "Hi, this is Frontline AI from BrightSmile Dental. You are due for a cleaning, and I can help find a time."
+      : "Hi, this is Frontline AI for city services. I’m calling to help with your service request.";
 
   const result = await startAgentPhoneCall({
     to: record.phone,
     script,
     caseId: record.id,
-    vertical: record.vertical
+    vertical: record.vertical,
+    initialGreeting
   });
 
   const updated = await updateCase(record.id, (current) => ({
@@ -41,7 +46,7 @@ export async function POST(request: Request) {
       message(
         current.id,
         "system",
-        `${current.vertical === "dental" ? "Dental recall" : "City service"} voice call ${result.provider === "agentphone" ? "started" : "mocked"}.`,
+        `${current.vertical === "dental" ? "Dental Client Support" : "City service"} voice call ${result.provider === "agentphone" ? "started" : "mocked"}.`,
         "voice",
         result.providerCallId
       ),

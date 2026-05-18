@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, Braces, Mail, Phone, Search, ShieldAlert, Sparkles } from "lucide-react";
 import { AIProviderToggle } from "@/components/AIProviderToggle";
 import { CaseActions } from "@/components/CaseActions";
+import { DentalCalendar } from "@/components/DentalCalendar";
 import { InboundSimulator } from "@/components/InboundSimulator";
 import {
   AuditLogItem,
@@ -67,6 +68,15 @@ export default async function CaseDetailPage({ params }: { params: Promise<{ id:
             </div>
 
             <InboundSimulator caseId={record.id} phone={record.phone} vertical={record.vertical} />
+
+            {record.vertical === "dental" && (
+              <DentalCalendar
+                caseId={record.id}
+                contactName={record.contactName}
+                caseEmail={record.email}
+                selectedAppointment={record.extractedFields.preferredTime}
+              />
+            )}
           </div>
 
           <aside className="space-y-5">
