@@ -3,8 +3,10 @@ import path from "path";
 import type { AIProvider, AppSettings } from "@/lib/types";
 import { hasUpstash, redisGet, redisSetJson } from "@/lib/upstash";
 
-const dataDir = path.join(process.cwd(), "data");
-const settingsPath = path.join(dataDir, "settings.json");
+const sourceDataDir = path.join(process.cwd(), "data");
+const writableDataDir = process.env.VERCEL ? path.join("/tmp", "frontline-ai-agent") : sourceDataDir;
+const settingsPath = path.join(writableDataDir, "settings.json");
+const sourceSettingsPath = path.join(sourceDataDir, "settings.json");
 const settingsKey = "frontline:settings";
 
 const defaultSettings: AppSettings = {
@@ -13,11 +15,12 @@ const defaultSettings: AppSettings = {
 };
 
 async function ensureSettings() {
-  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(writableDataDir, { recursive: true });
   try {
     await fs.access(settingsPath);
   } catch {
-    await fs.writeFile(settingsPath, JSON.stringify(defaultSettings, null, 2), "utf8");
+    const initial = await fs.readFile(sourceSettingsPath, "utf8").catch(() => JSON.stringify(defaultSettings, null, 2));
+    await fs.writeFile(settingsPath, initial, "utf8");
   }
 }
 

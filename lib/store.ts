@@ -13,18 +13,23 @@ import type {
 import { normalizeVertical } from "@/lib/types";
 import { hasUpstash, redisGet, redisSetJson } from "@/lib/upstash";
 
-const dataDir = path.join(process.cwd(), "data");
-const casesPath = path.join(dataDir, "cases.json");
-const memoryPath = path.join(dataDir, "memory.json");
+const sourceDataDir = path.join(process.cwd(), "data");
+const writableDataDir = process.env.VERCEL ? path.join("/tmp", "frontline-ai-agent") : sourceDataDir;
+const casesPath = path.join(writableDataDir, "cases.json");
+const memoryPath = path.join(writableDataDir, "memory.json");
+const sourceCasesPath = path.join(sourceDataDir, "cases.json");
+const sourceMemoryPath = path.join(sourceDataDir, "memory.json");
 const casesKey = "frontline:cases";
 const memoryKey = "frontline:memory";
 
 async function ensureJsonFile(filePath: string, fallback: string) {
-  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(writableDataDir, { recursive: true });
   try {
     await fs.access(filePath);
   } catch {
-    await fs.writeFile(filePath, fallback, "utf8");
+    const sourcePath = filePath.endsWith("cases.json") ? sourceCasesPath : sourceMemoryPath;
+    const initial = await fs.readFile(sourcePath, "utf8").catch(() => fallback);
+    await fs.writeFile(filePath, initial || fallback, "utf8");
   }
 }
 
