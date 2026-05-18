@@ -61,6 +61,11 @@ export async function processInboundMessage(input: {
     input.content,
     input.channel
   );
+  const explicitEmailRequest = isExplicitEmailRequest(input.content);
+  const willSendEmail = Boolean(
+    decision.shouldSendEmail &&
+      String(explicitEmailRequest ? (withInbound.email ?? decision.extractedFields.email ?? "") : (decision.extractedFields.email ?? withInbound.email ?? ""))
+  );
 
   const sendResult =
     input.channel === "sms" && withInbound.phone
@@ -77,7 +82,10 @@ export async function processInboundMessage(input: {
     riskLevel: decision.riskLevel,
     summary: decision.summary,
     nextAction: decision.nextAction,
-    messages: [message(current.id, "assistant", decision.reply, input.channel, sendResult.providerMessageId), ...current.messages],
+    messages:
+      input.channel === "voice" && willSendEmail
+        ? current.messages
+        : [message(current.id, "assistant", decision.reply, input.channel, sendResult.providerMessageId), ...current.messages],
     retrievalSnippets: [...retrievalSnippets, ...current.retrievalSnippets].slice(0, 12),
     memoryResults: [...memoryResults, ...current.memoryResults].slice(0, 12),
     auditLogs: [
@@ -97,11 +105,39 @@ export async function processInboundMessage(input: {
     ]
   }));
 
-  const recipientEmail = String(decision.extractedFields.email ?? updated?.email ?? "");
+  const recipientEmail = String(
+    explicitEmailRequest ? (updated?.email ?? decision.extractedFields.email ?? "") : (decision.extractedFields.email ?? updated?.email ?? "")
+  );
+  let reply = decision.reply;
   if (updated && decision.shouldSendEmail && recipientEmail) {
-    await sendCaseSummaryEmail(updated.id, recipientEmail);
+    const sent = await sendCaseSummaryEmail(updated.id, recipientEmail);
+    if (input.channel === "voice" || explicitEmailRequest) {
+      reply =
+        sent.provider === "agentmail"
+          ? `Done, I sent the confirmation email to ${recipientEmail}.`
+          : `I saved the confirmation for ${recipientEmail}. The email provider fallback was used, so the dashboard has the audit record.`;
+      await updateCase(updated.id, (current) => ({
+        ...current,
+        messages: [message(current.id, "assistant", reply, input.channel, sent.providerMessageId), ...current.messages],
+        auditLogs: [
+          audit(current.id, "agentmail.voice_confirmation.reply", {
+            provider: sent.provider,
+            recipientEmail,
+            providerMessageId: sent.providerMessageId
+          }),
+          ...current.auditLogs
+        ]
+      }));
+    }
     updated = await getCase(updated.id);
   }
 
-  return { duplicate: false, case: updated, reply: decision.reply, decision, sendResult };
+  return { duplicate: false, case: updated, reply, decision, sendResult };
+}
+
+function isExplicitEmailRequest(content: string) {
+  const lower = content.toLowerCase();
+  return ["send confirmation", "send the confirmation", "email confirmation", "send email", "send the email", "email me", "send the summary"].some((term) =>
+    lower.includes(term)
+  );
 }

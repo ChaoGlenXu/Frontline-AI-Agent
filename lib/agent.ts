@@ -32,10 +32,11 @@ export async function orchestrateAgentResponse(record: CaseRecord, inboundConten
     fallbackDecision(record, inboundContent, retrievalSnippets, memoryResults)
   );
   const lower = inboundContent.toLowerCase();
-  const recipientEmail = String(decision.extractedFields.email ?? record.email ?? "");
-  if (recipientEmail && hasAny(lower, ["send confirmation", "send the confirmation", "email confirmation", "send the summary", "email me", "to my email"])) {
+  const recipientEmail = String(record.email ?? decision.extractedFields.email ?? "");
+  if (recipientEmail && isEmailSendRequest(lower)) {
     decision.extractedFields.email = recipientEmail;
     decision.shouldSendEmail = true;
+    decision.reply = `Done, I’ll send the confirmation email to ${recipientEmail}.`;
   }
 
   if (decision.shouldSaveMemory || decision.status === "booked" || decision.status === "ticket_created" || decision.status === "escalated") {
@@ -224,9 +225,11 @@ function fallbackDecision(
 ): AgentDecision {
   const extractedFields = { ...record.extractedFields };
   const lower = inboundContent.toLowerCase();
-  const email = inboundContent.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+  const email = extractEmail(inboundContent);
   if (email) extractedFields.email = email;
-  if (!extractedFields.email && record.email && hasAny(lower, ["email", "confirmation", "confirm", "send it", "send the summary"])) {
+  if (record.email && isEmailSendRequest(lower)) {
+    extractedFields.email = record.email;
+  } else if (!extractedFields.email && record.email && hasAny(lower, ["email", "confirmation", "confirm", "send it", "send the summary"])) {
     extractedFields.email = record.email;
   }
 
@@ -311,6 +314,36 @@ function completed(
 
 function hasAny(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term));
+}
+
+function isEmailSendRequest(text: string) {
+  return hasAny(text, [
+    "send confirmation",
+    "send the confirmation",
+    "send a confirmation",
+    "email confirmation",
+    "confirmation email",
+    "send email",
+    "send the email",
+    "send it now",
+    "send it to me",
+    "send the summary",
+    "email me",
+    "to my email"
+  ]);
+}
+
+function extractEmail(content: string) {
+  const direct = content.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+  if (direct) return direct;
+
+  const spoken = content
+    .toLowerCase()
+    .replace(/\s+at\s+/g, "@")
+    .replace(/\s+dot\s+/g, ".")
+    .replace(/\s+period\s+/g, ".")
+    .replace(/\s+/g, "");
+  return spoken.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/)?.[0];
 }
 
 function inferGovernmentCategory(text: string) {
